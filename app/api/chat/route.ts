@@ -22,8 +22,6 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}))
     const rawMessages = Array.isArray(body?.messages) ? body.messages : []
-
-    // 🔐 лимит истории (для бесплатного демо)
     const messages: InMsg[] = rawMessages
       .filter((m: any) => typeof m?.content === "string")
       .slice(-8)
@@ -55,10 +53,17 @@ export async function POST(req: Request) {
       "Пустой ответ от модели"
 
     return Response.json({ content: answer })
-  } catch (e) {
+    } catch (e: any) {
+    console.error("OPENAI ERROR:", e)
     return Response.json(
-      { content: "Ошибка при обращении к OpenAI" },
+      {
+        content:
+          e?.error?.message ||
+          e?.message ||
+          "Ошибка при обращении к OpenAI",
+      },
       { status: 500 }
     )
   }
+
 }
