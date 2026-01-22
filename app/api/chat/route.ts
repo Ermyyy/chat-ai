@@ -1,13 +1,16 @@
 export const runtime = "nodejs"
 
 type InMsg = {
-  role: "user" | "assistant" | "system"
+  role: "system" | "user" | "assistant"
   content: string
 }
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.GROK_API_KEY) {
+    const apiKey = process.env.GROK_API_KEY
+    const model = process.env.GROK_MODEL || "grok-4-latest"
+
+    if (!apiKey) {
       return Response.json(
         { content: "GROK_API_KEY is not set" },
         { status: 500 }
@@ -16,11 +19,16 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}))
     const rawMessages = Array.isArray(body?.messages) ? body.messages : []
-    
+
     const messages: InMsg[] = rawMessages
       .filter((m: any) => typeof m?.content === "string")
       .map((m: any) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
+        role:
+          m.role === "assistant"
+            ? "assistant"
+            : m.role === "system"
+            ? "system"
+            : "user",
         content: m.content,
       }))
 
@@ -35,19 +43,13 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROK_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "grok-2-latest",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Ты полезный и понятный AI-ассистент. Отвечай кратко и по делу.",
-          },
-          ...messages,
-        ],
+        model,
+        messages,
         temperature: 0.7,
+        stream: false,
       }),
     })
 
