@@ -1,4 +1,10 @@
+import OpenAI from "openai"
+
 export const runtime = "nodejs"
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+})
 
 type InMsg = {
   role: "system" | "user" | "assistant"
@@ -7,12 +13,9 @@ type InMsg = {
 
 export async function POST(req: Request) {
   try {
-    const apiKey = process.env.GROK_API_KEY
-    const model = process.env.GROK_MODEL || "grok-4-latest"
-
-    if (!apiKey) {
+    if (!process.env.OPENAI_API_KEY) {
       return Response.json(
-        { content: "GROK_API_KEY is not set" },
+        { content: "OPENAI_API_KEY is not set" },
         { status: 500 }
       )
     }
@@ -20,8 +23,10 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}))
     const rawMessages = Array.isArray(body?.messages) ? body.messages : []
 
+    // 🔐 лимит истории (для бесплатного демо)
     const messages: InMsg[] = rawMessages
       .filter((m: any) => typeof m?.content === "string")
+      .slice(-8)
       .map((m: any) => ({
         role:
           m.role === "assistant"
@@ -32,45 +37,27 @@ export async function POST(req: Request) {
         content: m.content,
       }))
 
-    if (messages.length === 0) {
-      return Response.json(
-        { content: "Пустой запрос" },
-        { status: 400 }
-      )
-    }
-
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.7,
-        stream: false,
-      }),
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Ты полезный и понятный AI-ассистент. Отвечай кратко и по делу.",
+        },
+        ...messages,
+      ],
+      temperature: 0.6,
     })
 
-    if (!response.ok) {
-      const text = await response.text()
-      return Response.json(
-        { content: `Grok API error: HTTP ${response.status}\n${text}` },
-        { status: 500 }
-      )
-    }
-
-    const data = await response.json()
-
     const answer =
-      data?.choices?.[0]?.message?.content ??
-      "Пустой ответ от Grok"
+      completion.choices[0]?.message?.content ??
+      "Пустой ответ от модели"
 
     return Response.json({ content: answer })
   } catch (e) {
     return Response.json(
-      { content: "Ошибка сервера при обращении к Grok" },
+      { content: "Ошибка при обращении к OpenAI" },
       { status: 500 }
     )
   }
