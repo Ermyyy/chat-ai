@@ -1,83 +1,74 @@
 export const runtime = "nodejs"
 
-type InMsg = { role: "user" | "assistant" | "system"; content: string }
-
-function asText(x: unknown) {
-  return typeof x === "string" ? x : JSON.stringify(x)
+type InMsg = {
+  role: "user" | "assistant" | "system"
+  content: string
 }
 
 export async function POST(req: Request) {
   try {
     if (!process.env.GROK_API_KEY) {
       return Response.json(
-        { content: "Сервер: не задан GROK_API_KEY" },
+        { content: "GROK_API_KEY is not set" },
         { status: 500 }
       )
     }
 
     const body = await req.json().catch(() => ({}))
-    const messages: InMsg[] = Array.isArray(body?.messages) ? body.messages : []
+    const rawMessages = Array.isArray(body?.messages) ? body.messages : []
+    
+    const messages: InMsg[] = rawMessages
+      .filter((m: any) => typeof m?.content === "string")
+      .map((m: any) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      }))
 
-    const model = process.env.GROK_MODEL || "grok-2-latest"
+    if (messages.length === 0) {
+      return Response.json(
+        { content: "Пустой запрос" },
+        { status: 400 }
+      )
+    }
 
-    const r = await fetch("https://api.x.ai/v1/chat/completions", {
+    const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.GROK_API_KEY}`,
       },
       body: JSON.stringify({
-        model,
+        model: "grok-2-latest",
         messages: [
           {
             role: "system",
-            content: "Ты полезный и понятный AI-ассистент. Отвечай кратко и по делу.",
+            content:
+              "Ты полезный и понятный AI-ассистент. Отвечай кратко и по делу.",
           },
           ...messages,
         ],
         temperature: 0.7,
       }),
     })
-    if (!r.ok) {
-      const text = await r.text()
-      const isHtml = text.trim().startsWith("<!doctype html") || text.includes("<html")
-      if (isHtml && text.includes("not available in your region")) {
-        return Response.json(
-          {
-            content:
-              "Grok недоступен в текущем регионе выполнения сервера. " +
-              "Задеплой проект в Vercel (EU/US) или используй другой провайдер.",
-          },
-          { status: 500 }
-        )
-      }
-      try {
-        const j = JSON.parse(text)
-        const msg =
-          j?.error?.message ||
-          j?.message ||
-          `Grok API error: HTTP ${r.status}`
-        return Response.json({ content: msg }, { status: 500 })
-      } catch {
-        return Response.json(
-          { content: `Grok API error: HTTP ${r.status}. ${text.slice(0, 400)}` },
-          { status: 500 }
-        )
-      }
+
+    if (!response.ok) {
+      const text = await response.text()
+      return Response.json(
+        { content: `Grok API error: HTTP ${response.status}\n${text}` },
+        { status: 500 }
+      )
     }
 
-    const data = await r.json().catch(() => null)
+    const data = await response.json()
+
     const answer =
       data?.choices?.[0]?.message?.content ??
-      data?.choices?.[0]?.text ??
-      null
+      "Пустой ответ от Grok"
 
-    return Response.json({
-      content: answer ?? "null от Grok",
-    })
+    return Response.json({ content: answer })
   } catch (e) {
     return Response.json(
-      { content: "Ошибка сервера Grok: " + asText(e) },
+      { content: "Ошибка сервера при обращении к Grok" },
       { status: 500 }
     )
   }
