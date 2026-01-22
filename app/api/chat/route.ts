@@ -1,15 +1,37 @@
+import OpenAI from "openai"
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+})
+
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null)
-  const lastUser = Array.isArray(body?.messages)
-    ? [...body.messages].reverse().find((m: any) => m?.role === 'user')?.content
-    : ''
+  try {
+    const body = await req.json()
+    const messages = body.messages ?? []
 
-  // Имитируем задержку “ИИ”
-  await new Promise(r => setTimeout(r, 600))
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Ты полезный и понятный AI-ассистент. Отвечай кратко и по делу.",
+        },
+        ...messages,
+      ],
+      temperature: 0.7,
+    })
 
-  return Response.json({
-    content:
-      `Я понял вопрос: "${lastUser}".\n\n` +
-      `Сейчас я работаю в режиме заглушки. Далее подключим Grok/OpenAI и ответы станут реальными.`
-  })
+    const answer =
+      completion.choices[0]?.message?.content ??
+      "Пустой ответ от модели"
+
+    return Response.json({ content: answer })
+  } catch (e) {
+    console.error(e)
+    return Response.json(
+      { content: "Ошибка при обращении к OpenAI" },
+      { status: 500 }
+    )
+  }
 }

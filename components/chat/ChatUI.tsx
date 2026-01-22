@@ -22,18 +22,17 @@ export function ChatUI() {
     useEffect(() => {
         const data = safeParse(localStorage.getItem(LS_KEY))
         if (Array.isArray(data)) setMessages(data)
-    })
+    },[])
 
     useEffect(() => {
         localStorage.setItem(LS_KEY, JSON.stringify(messages))
     }, [messages])
 
     useEffect(() => {
-        listRef?.current?.scrollTo({top: listRef.current.scrollHeight, behavior: 'smooth'})
+        listRef.current?.scrollTo({top: listRef.current.scrollHeight, behavior: 'smooth'})
     }, [messages, loading])
 
     const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
-
     async function send() {
         if (!canSend) return
         const text = input.trim()
@@ -45,9 +44,47 @@ export function ChatUI() {
             content: text,
             createdAt: Date.now()
         }
+
         setMessages(prev => [...prev, userMsg])
         setLoading(true)
+
+        try {
+            const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [...messages, userMsg].map(m => ({
+                role: m.role,
+                content: m.content,
+                })),
+            }),
+            })
+
+            const data = await res.json()
+
+            const botMsg: Msg = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: String(data?.content ?? 'Пустой ответ'),
+            createdAt: Date.now(),
+            }
+
+            setMessages(prev => [...prev, botMsg])
+        } catch (err) {
+            setMessages(prev => [
+            ...prev,
+            {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: 'Ошибка сети или сервера',
+                createdAt: Date.now(),
+            },
+            ])
+        } finally {
+            setLoading(false)
+        }
     }
+
 
     function clearChat() {
         setMessages([])
@@ -60,7 +97,7 @@ export function ChatUI() {
             border-b border-white/10">
                 <div className="flex flex-col">
                     <span className="
-                    text-[13px] tracking-wide text-white/70">MME CHAT</span>
+                    text-[13px] tracking-wide text-white/70">UNXSHI CHAT</span>
                     <h1 className="
                     text-[18px] font-medium text-white/90">AI Assistant</h1>
                 </div>
